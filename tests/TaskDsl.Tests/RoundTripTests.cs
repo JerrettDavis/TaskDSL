@@ -81,8 +81,8 @@ public class RoundTripTests
         }
 
         // Recurrence (compare by printed canonical form to ignore ordering of times)
-        var aRec = a.Recurrence.IsEmpty ? "" : Parser.RecurrenceToString(a.Recurrence);
-        var bRec = b.Recurrence.IsEmpty ? "" : Parser.RecurrenceToString(b.Recurrence);
+        var aRec = a.Recurrence.IsEmpty ? "" : a.Recurrence.ToString();
+        var bRec = b.Recurrence.IsEmpty ? "" : b.Recurrence.ToString();
         Assert.Equal(aRec, bRec);
 
         // Times list equality when present

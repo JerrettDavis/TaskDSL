@@ -233,7 +233,7 @@ O [facilities] #"support team" @"HQ North" -- Replace air filters \-- lobby and 
 
 ## Roadmap
 
-* [ ] Canonicalizer (stable attribute ordering)
+* [x] Canonicalizer (stable attribute ordering)
 * [ ] Serialization back to DSL (`ToDsl`) — if not using `ToString()`
 * [ ] Dependency cycle detection
 * [ ] Optional natural language date/time parsing

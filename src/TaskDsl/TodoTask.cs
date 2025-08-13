@@ -1,3 +1,5 @@
+using TaskDsl.TaskAttributes;
+
 namespace TaskDsl;
 
 using static Parser;
@@ -33,56 +35,13 @@ public sealed record TodoTask
             // ID
             $"[{Id}]"
         };
-
-        // Flags
-        if (Priority) parts.Add("!");
-        if (BlockedExplicit) parts.Add("?");
-
-        // Assignees
-        parts
-            .AddRange(Assignees.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .Select(a => NeedsQuoting(a) ? $"^\"{a}\"" : $"^{a}"));
-
-        // Tags
-        parts
-            .AddRange(Tags.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .Select(tag => NeedsQuoting(tag) ? $"#\"{tag}\"" : $"#{tag}"));
-
-        // Dependencies
-        parts.AddRange(Dependencies.Select(dep => $"+[{dep}]"));
-
-        // Recurrence
-        if (!Recurrence.IsEmpty)
-            parts.Add($"*{RecurrenceToString(Recurrence)}");
-
-        // Due
-        if (Due.HasValue)
-            parts.Add($">{Due.Value:yyyy-MM-dd}");
-
-        // Estimate
-        if (Estimate.HasValue)
-            parts.Add($"={FormatEstimate(Estimate.Value)}");
-
-        // Numeric priority
-        if (PriorityLevel.HasValue)
-            parts.Add($"p:{PriorityLevel.Value}");
-
-        // Contexts
-        parts.AddRange(Contexts.OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-            .Select(ctx => NeedsQuoting(ctx) ? $"@\"{ctx}\"" : $"@{ctx}"));
-
-        // Meta
-        parts.AddRange(Meta.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(kv => $"meta:{kv.Key}={kv.Value}"));
-
-        // Title
+        var attrBuilder = new TaskAttributeBuilder(this);
+        var attr = attrBuilder.BuildCanonicalAttributes();
+        if (!string.IsNullOrWhiteSpace(attr))
+            parts.Add(attr);
         var titlePart = string.IsNullOrWhiteSpace(Title) ? "" : $" -- {EscapeTitle(Title)}";
-
         return string.Join(" ", parts) + titlePart;
     }
-
-    private static bool NeedsQuoting(string s) =>
-        s.Contains(' ') || s.Contains('\t') || s.Contains('"');
 
     private static string EscapeTitle(string title) =>
         title.Replace("--", "\\--");
@@ -118,45 +77,18 @@ public sealed record TodoTask
         if (BlockedExplicit) statusIcon = "[✗]";
         if (Priority) statusIcon += "★";
 
-        // Compose detail pills
-        var parts = new List<string>();
+        var pills = new AttributeBuilder()
+            .AddIf(Tags.Count > 0, () => "Tags: " + string.Join(", ", Tags.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Select(t => "#" + t)))
+            .AddIf(Assignees.Count > 0, () => string.Join(", ", Assignees.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Select(a => $"@{a}")))
+            .AddIf(Contexts.Count > 0, () => string.Join(", ", Contexts.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Select(c => $"@{c}")))
+            .AddIf(Due.HasValue, () => $"Due: {Due!.Value:yyyy-MM-dd}")
+            .AddIf(!Recurrence.IsEmpty, () => $"Repeat: {Recurrence.ToString(friendlyTimes: true)}")
+            .AddIf(Dependencies.Count > 0, () => "After: " + string.Join(", ", Dependencies))
+            .AddIf(Estimate.HasValue, () => $"Est: {FormatEstimate(Estimate!.Value)}")
+            .AddIf(PriorityLevel.HasValue, () => $"P{PriorityLevel!.Value}")
+            .AddIf(Meta.Count > 0, () => "Meta: " + string.Join(", ", Meta.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => $"{kv.Key}={kv.Value}")));
 
-        if (Tags.Count > 0)
-            parts.Add("Tags: " + string.Join(", ",
-                Tags.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).Select(t => "#" + t)));
-
-        if (Assignees.Count > 0)
-            parts.Add(string.Join(", ", Assignees
-                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .Select(a => $"@{a}")));
-
-        if (Contexts.Count > 0)
-            parts.Add(string.Join(", ", Contexts
-                .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
-                .Select(c => $"@{c}")));
-
-        if (Due.HasValue)
-            parts.Add($"Due: {Due.Value:yyyy-MM-dd}");
-
-        if (!Recurrence.IsEmpty)
-            parts.Add($"Repeat: {RecurrenceToString(Recurrence, friendlyTimes: true)}");
-
-        if (Dependencies.Count > 0)
-            parts.Add("After: " + string.Join(", ", Dependencies));
-
-        if (Estimate.HasValue)
-            parts.Add($"Est: {FormatEstimate(Estimate.Value)}");
-
-        if (PriorityLevel.HasValue)
-            parts.Add($"P{PriorityLevel.Value}");
-
-        if (Meta.Count > 0)
-            parts.Add("Meta: " + string.Join(", ", Meta
-                .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(kv => $"{kv.Key}={kv.Value}")));
-
-        var details = parts.Count == 0 ? "" : "\n    " + string.Join(" | ", parts);
-
+        var details = pills.AttributeCount == 0 ? "" : "\n    " + pills.BuildCanonicalAttributes(" | ");
         return $"{statusIcon} {Title} ({Id}){details}";
     }
 

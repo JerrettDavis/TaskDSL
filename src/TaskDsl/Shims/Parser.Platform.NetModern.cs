@@ -64,7 +64,8 @@ public static partial class Parser
         int? count)
         => new Recurrence(freq, interval, times, start, end, count);
 
-    private static partial string FormatTimeTokenShim(TimeOnly t, bool friendly, string freq)
+
+    internal static partial string FormatTimeTokenShim(TimeOnly t, bool friendly, string freq)
     {
         if (!friendly)
             return string.Equals(freq, "hour", StringComparison.OrdinalIgnoreCase) && t.Hour == 0
@@ -79,10 +80,10 @@ public static partial class Parser
         return m == 0 ? $"{h12}{(isPm ? "p" : "a")}" : $"{h12}:{m:00}{(isPm ? "p" : "a")}";
     }
 
-    private static partial string FormatDateOnly(DateOnly d)
+    internal static partial string FormatDateOnly(DateOnly d)
         => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    private static partial int GetHour(TimeOnly t) => t.Hour;
-    private static partial int GetMinute(TimeOnly t) => t.Minute;
+    internal static partial int GetHour(TimeOnly t) => t.Hour;
+    internal static partial int GetMinute(TimeOnly t) => t.Minute;
 }
 #endif

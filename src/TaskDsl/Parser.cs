@@ -31,7 +31,7 @@ public static partial class Parser
     private static readonly HashSet<string> Weekdays = new(StringComparer.OrdinalIgnoreCase)
         { "mon", "tue", "wed", "thu", "fri", "sat", "sun" };
 
-    private static bool IsWeekday(string s) => Weekdays.Contains(s);
+    internal static bool IsWeekday(string s) => Weekdays.Contains(s);
 
     private static bool IsNthWeekday(string s) =>
         Regex.IsMatch(s, "^(?:[1-5]|last)(mon|tue|wed|thu|fri|sat|sun)$", RegexOptions.IgnoreCase);
@@ -428,174 +428,6 @@ public static partial class Parser
             throw new FormatException($"Bad recurrence freq '{f}'.");
     }
 
-
-    public static Dictionary<string, string> ToRRule(Recurrence r)
-    {
-        if (r.IsEmpty) return new Dictionary<string, string>();
-        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-        var freq = r.Freq switch
-        {
-            "min" => "MINUTELY",
-            "hour" => "HOURLY",
-            "day" => "DAILY",
-            "week" => "WEEKLY",
-            "month" => "MONTHLY",
-            "year" => "YEARLY",
-            _ => null // weekday / nth-weekday handled via BYDAY / POSTPOSE below
-        };
-
-        if (freq != null) map["FREQ"] = freq;
-        if (r.Interval != 1) map["INTERVAL"] = r.Interval.ToString(CultureInfo.InvariantCulture);
-        if (r.Count is { } c) map["COUNT"] = c.ToString(CultureInfo.InvariantCulture);
-        if (r.End is { } e) map["UNTIL"] = e.ToString("yyyyMMdd") + "T235959Z";
-
-        if (IsWeekday(r.Freq))
-        {
-            map["FREQ"] = "WEEKLY";
-            map["BYDAY"] = DayToIcal(r.Freq);
-        }
-        else if (Regex.IsMatch(r.Freq, "^(?:[1-5]|last)(mon|tue|wed|thu|fri|sat|sun)$", RegexOptions.IgnoreCase))
-        {
-            map["FREQ"] = "MONTHLY";
-            var m = Regex.Match(r.Freq, "^(?<n>[1-5]|last)(?<d>mon|tue|wed|thu|fri|sat|sun)$", RegexOptions.IgnoreCase);
-            var setPos = m.Groups["n"].Value.Equals("last", StringComparison.OrdinalIgnoreCase) ? "-1" : m.Groups["n"].Value;
-            map["BYDAY"] = DayToIcal(m.Groups["d"].Value);
-            map["BYSETPOS"] = setPos;
-        }
-
-        if (r.Times.Count > 0)
-        {
-            map["BYHOUR"] = string.Join(",", r.Times.Select(t => t.Hour));
-            map["BYMINUTE"] = string.Join(",", r.Times.Select(t => t.Minute));
-        }
-
-        return map;
-
-        static string DayToIcal(string s) => s.ToLowerInvariant() switch
-        {
-            "mon" => "MO", "tue" => "TU", "wed" => "WE", "thu" => "TH",
-            "fri" => "FR", "sat" => "SA", "sun" => "SU",
-            _ => throw new ArgumentOutOfRangeException(nameof(s))
-        };
-    }
-
-    public static string ToCronString(Recurrence r)
-    {
-        if (r.IsEmpty)
-            throw new ArgumentException("Recurrence is empty; cannot produce cron string.");
-
-        string dayOfMonth = "*", month = "*", dayOfWeek = "*";
-
-        // Build distinct, sorted lists for minutes/hours when times are present
-        var minutes = r.Times.Count > 0
-            ? r.Times.Select(t => t.Minute).Distinct().OrderBy(x => x).ToList()
-            : [0];
-
-        var hours = r.Times.Count > 0
-            ? r.Times.Select(t => t.Hour).Distinct().OrderBy(x => x).ToList()
-            : []; // empty means "*"
-
-        // Defaults (used by day/week/month/weekday cases)
-        var minute = string.Join(",", minutes);
-        var hour = hours.Count > 0 ? string.Join(",", hours) : "*";
-
-        switch (r.Freq)
-        {
-            case "min":
-                minute = $"*/{r.Interval}";
-                hour = "*";
-                dayOfMonth = "*";
-                month = "*";
-                dayOfWeek = "*";
-                break;
-
-            case "hour":
-                // For hourly, the minute list is meaningful; hours are */interval
-                minute = string.Join(",", minutes);
-                hour = $"*/{r.Interval}";
-                dayOfMonth = "*";
-                month = "*";
-                dayOfWeek = "*";
-                break;
-
-            case "day":
-                dayOfMonth = $"*/{r.Interval}";
-                break;
-
-            case "week":
-                // Plain cron can’t do “every N weeks”; leave DOW="*"
-                // If you need exact weekly days, use weekday freqs (mon..sun).
-                break;
-
-            case "month":
-                month = $"*/{r.Interval}";
-                break;
-
-            case "year":
-                // Cron can’t do */N years; pin to Jan 1 at given time(s)
-                dayOfMonth = "1";
-                month = "1";
-                break;
-
-            default:
-                // Weekday mapping (0=Sun..6=Sat)
-                var dowMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["sun"] = "0", ["mon"] = "1", ["tue"] = "2", ["wed"] = "3",
-                    ["thu"] = "4", ["fri"] = "5", ["sat"] = "6",
-                };
-
-                if (dowMap.TryGetValue(r.Freq, out var dow))
-                {
-                    dayOfWeek = dow;
-                }
-                else if (Regex.IsMatch(r.Freq, @"^(?:[1-5]|last)(mon|tue|wed|thu|fri|sat|sun)$", RegexOptions.IgnoreCase))
-                {
-                    throw new NotSupportedException($"Cron does not support nth/last weekday ({r.Freq}) directly.");
-                }
-                else
-                {
-                    throw new FormatException($"Unknown recurrence freq '{r.Freq}'.");
-                }
-
-                break;
-        }
-
-        return $"{minute} {hour} {dayOfMonth} {month} {dayOfWeek}";
-    }
-
-
-    public static string RecurrenceToString(Recurrence r, bool friendlyTimes = false)
-    {
-        if (r is null) throw new ArgumentNullException(nameof(r));
-        if (r.IsEmpty) return string.Empty;
-
-        var parts = new List<string>();
-
-        // freq + optional /interval
-        var head = r.Freq;
-        if (r.Interval != 1) head += "/" + r.Interval;
-        parts.Add(head);
-
-        // +times (sorted, distinct)
-        if (r.Times is { Count: > 0 })
-        {
-            parts.AddRange(r.Times
-                .Distinct()
-                .OrderBy(GetHour)
-                .ThenBy(GetMinute)
-                .Select(t => "+" + FormatTimeTokenShim(t, friendlyTimes, r.Freq)));
-        }
-
-        if (r.Start is { } s) parts.Add("@" + FormatDateOnly(s));
-        if (r.End is { } e) parts.Add("~" + FormatDateOnly(e));
-        else if (r.Count is { } c) parts.Add("~count:" + c.ToString(CultureInfo.InvariantCulture));
-
-        return string.Concat(parts);
-    }
-
-
 #if NET6_0_OR_GREATER
     // Native modern types
     private static partial DateOnly NextOrSameDate(DateTimeOffset localNow, DayOfWeek target, bool inclusive);
@@ -605,10 +437,10 @@ public static partial class Parser
     private static partial DateOnly TruncateToDate(DateTimeOffset dt);
     private static partial DateOnly? ParseDateOnlyOrNull(string? s);
     private static partial Recurrence CreateRecurrence(string freq, int interval, List<TimeOnly> times, DateOnly? start, DateOnly? end, int? count);
-    private static partial string FormatTimeTokenShim(TimeOnly t, bool friendly, string freq);
-    private static partial string FormatDateOnly(DateOnly d);
-    private static partial int GetHour(TimeOnly t);
-    private static partial int GetMinute(TimeOnly t);
+    internal static partial string FormatTimeTokenShim(TimeOnly t, bool friendly, string freq);
+    internal static partial string FormatDateOnly(DateOnly d);
+    internal static partial int GetHour(TimeOnly t);
+    internal static partial int GetMinute(TimeOnly t);
 
 #else
     // Legacy types (“date-only” as DateTime.Date, “time-only” as DateTime at 0001-01-01)
@@ -619,9 +451,9 @@ public static partial class Parser
     private static partial DateTime  TruncateToDate(DateTimeOffset dt);
     private static partial DateTime? ParseDateOnlyOrNull(string? s);
     private static partial Recurrence CreateRecurrence(string freq, int interval, List<DateTime> times, DateTime? start, DateTime? end, int? count);
-    private static partial string    FormatTimeTokenShim(DateTime t, bool friendly, string freq);
-    private static partial string    FormatDateOnly(DateTime d);
-    private static partial int       GetHour(DateTime t);
-    private static partial int       GetMinute(DateTime t);
+    internal static partial string    FormatTimeTokenShim(DateTime t, bool friendly, string freq);
+    internal static partial string    FormatDateOnly(DateTime d);
+    internal static partial int       GetHour(DateTime t);
+    internal static partial int       GetMinute(DateTime t);
 #endif
 }

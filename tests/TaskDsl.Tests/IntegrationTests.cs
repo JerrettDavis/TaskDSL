@@ -85,7 +85,7 @@ public class IntegrationTests
             var t = Get("deploy");
             Assert.Contains("cleanup", t.Dependencies);
             Assert.Equal("1mon", t.Recurrence.Freq);
-            var rr = Parser.ToRRule(t.Recurrence);
+            var rr = t.Recurrence.ToRRule();
             Assert.Equal("MONTHLY", rr["FREQ"]);
             Assert.Equal("MO", rr["BYDAY"]);
             Assert.Equal("1", rr["BYSETPOS"]);
@@ -104,7 +104,7 @@ public class IntegrationTests
         // [finance-report] last Friday monthly, RRULE
         {
             var t = Get("finance-report");
-            var rr = Parser.ToRRule(t.Recurrence);
+            var rr = t.Recurrence.ToRRule();
             Assert.Equal("MONTHLY", rr["FREQ"]);
             Assert.Equal("FR", rr["BYDAY"]);
             Assert.Equal("-1", rr["BYSETPOS"]);
@@ -154,7 +154,7 @@ public class IntegrationTests
             Assert.Single(t.Recurrence.Times);
             Assert.Equal(10, t.Recurrence.Times[0].Hour);
 
-            var rr = Parser.ToRRule(t.Recurrence);
+            var rr = t.Recurrence.ToRRule();
             Assert.Equal("WEEKLY", rr["FREQ"]);
             Assert.Equal("TU", rr["BYDAY"]);
             Assert.Equal("10", rr["BYHOUR"]);

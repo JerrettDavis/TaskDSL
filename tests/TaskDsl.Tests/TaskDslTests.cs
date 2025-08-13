@@ -43,7 +43,7 @@ public class TaskDslTests
         Assert.Equal(14, t.Recurrence.Times[0].Hour);
         Assert.Equal(0, t.Recurrence.Times[0].Minute);
 
-        var rrule = Parser.ToRRule(t.Recurrence);
+        var rrule = t.Recurrence.ToRRule();
         Assert.Equal("WEEKLY", rrule["FREQ"]);
         Assert.Equal("MO", rrule["BYDAY"]);
         Assert.Equal("14", rrule["BYHOUR"]);
@@ -120,14 +120,14 @@ public class TaskDslTests
     public void Recurrence_ToString_Canonical_And_Friendly()
     {
         var r = Parser.ParseRecurrence("day/2+8a+8p@2025-01-01~count:5");
-        Assert.Equal("day/2+08:00+20:00@2025-01-01~count:5", Parser.RecurrenceToString(r));
-        Assert.Equal("day/2+8a+8p@2025-01-01~count:5", Parser.RecurrenceToString(r, friendlyTimes:true));
+        Assert.Equal("day/2+08:00+20:00@2025-01-01~count:5", r.ToString());
+        Assert.Equal("day/2+8a+8p@2025-01-01~count:5", r.ToString(friendlyTimes:true));
     }
 
     [Fact]
     public void Recurrence_ToString_Hour_MinuteOnly_Roundtrip()
     {
         var r = Parser.ParseRecurrence("hour/3+15+45");
-        Assert.Equal("hour/3+15+45", Parser.RecurrenceToString(r)); // minute-only preserved
+        Assert.Equal("hour/3+15+45", r.ToString()); // minute-only preserved
     }
 }
