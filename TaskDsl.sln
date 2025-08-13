@@ -1,8 +1,8 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskDsl", "TaskDsl\TaskDsl.csproj", "{FE15CE66-4C70-4FD6-8797-D50C71E8A6B0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskDsl", "src\TaskDsl\TaskDsl.csproj", "{FE15CE66-4C70-4FD6-8797-D50C71E8A6B0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskDsl.Tests", "TaskDsl.Tests\TaskDsl.Tests.csproj", "{E2C1B058-22D2-44CF-BA4B-4F4762AD3BC0}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TaskDsl.Tests", "tests\TaskDsl.Tests\TaskDsl.Tests.csproj", "{E2C1B058-22D2-44CF-BA4B-4F4762AD3BC0}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

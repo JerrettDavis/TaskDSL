@@ -61,9 +61,8 @@ public class RecurrenceParsingTests
         var t1 = Parser.ParseLine("O [r] *month/3@2025-01-01~2025-12-31 -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc);
         Assert.Equal("month", t1.Recurrence.Freq);
         Assert.Equal(3, t1.Recurrence.Interval);
-        Assert.Equal(new DateOnly(2025, 1, 1), t1.Recurrence.Start);
-        Assert.Equal(new DateOnly(2025, 12, 31), t1.Recurrence.End);
-
+        Assert.Equal(new(2025, 1, 1), t1.Recurrence.Start);
+        Assert.Equal(new(2025, 12, 31), t1.Recurrence.End);
         var t2 = Parser.ParseLine("O [r] *day~count:10 -- y", TestUtil.ChicagoTz, TestUtil.FixedNowUtc);
         Assert.Equal(10, t2.Recurrence.Count);
     }

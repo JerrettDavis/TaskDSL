@@ -5,19 +5,19 @@ public class AttributeParsingTests
     [Fact]
     public void Parses_Assignees_Tags_Deps()
     {
-        var line = "O [t] ^jd ^sam -work -bgis +[a] +[b] -- Title";
+        const string line = "O [t] ^jd ^sam -work -bgis +[a] +[b] -- Title";
         var t = Parser.ParseLine(line, TestUtil.ChicagoTz, TestUtil.FixedNowUtc);
 
         Assert.True(t.Assignees.SetEquals(["jd", "sam"]));
         Assert.True(t.Tags.SetEquals(["work", "bgis"]));
-        Assert.Equal(new[] { "a", "b" }, t.Dependencies.ToArray());
+        Assert.Equal(["a", "b"], t.Dependencies.ToArray());
         Assert.Equal("Title", t.Title);
     }
 
     [Fact]
     public void Parses_Estimate_Priority_Context_Meta()
     {
-        var line = "O [t] =45m p:3 @home @office meta:source=ops meta:ticket=BG-12 -- Do it";
+        const string line = "O [t] =45m p:3 @home @office meta:source=ops meta:ticket=BG-12 -- Do it";
         var t = Parser.ParseLine(line, TestUtil.ChicagoTz, TestUtil.FixedNowUtc);
 
         Assert.Equal(TimeSpan.FromMinutes(45), t.Estimate);
@@ -41,5 +41,17 @@ public class AttributeParsingTests
     {
         Assert.ThrowsAny<Exception>(() =>
             Parser.ParseLine("O [t] %weird -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
+    }
+
+    [Theory]
+    [InlineData("=10x")] // invalid unit
+    [InlineData("=foo")] // not matching regex
+    [InlineData("=1w")]  // unsupported unit
+    [InlineData("=m")]   // missing number
+    [InlineData("=10")]  // missing unit
+    public void Bad_Duration_Throws(string dur)
+    {
+        Assert.Throws<FormatException>(() =>
+            Parser.ParseLine($"O [t] {dur} -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
     }
 }

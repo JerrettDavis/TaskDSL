@@ -7,7 +7,6 @@ public class IntegrationTests
     {
         var now = TestUtil.FixedNowUtc;
         var tz = TestUtil.ChicagoTz;
-
         var lines = new[]
         {
             // 1) Simple root item
@@ -59,7 +58,7 @@ public class IntegrationTests
 
         // Some category counts
         Assert.Equal(1, tasks.Count(t => t.Status == TaskStatus.Done));
-        Assert.True(tasks.Any(t => t.Recurrence is { IsEmpty: false }));
+        Assert.Contains(tasks, t => t.Recurrence is { IsEmpty: false });
 
         // --------- Specific assertions by id ----------
         TodoTask Get(string id) => tasks.Single(t => t.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -117,7 +116,7 @@ public class IntegrationTests
         {
             var t = Get("standup");
             Assert.Equal("wed", t.Recurrence.Freq);
-            Assert.Equal(new[] { 9, 13 }, t.Recurrence.Times.Select(x => x.Hour).ToArray());
+            Assert.Equal([9, 13], t.Recurrence.Times.Select(x => x.Hour).ToArray());
         }
 
         // [quarterly-plan] month/3 with range
@@ -125,8 +124,8 @@ public class IntegrationTests
             var t = Get("quarterly-plan");
             Assert.Equal("month", t.Recurrence.Freq);
             Assert.Equal(3, t.Recurrence.Interval);
-            Assert.Equal(new DateOnly(2025, 1, 1), t.Recurrence.Start);
-            Assert.Equal(new DateOnly(2025, 12, 31), t.Recurrence.End);
+            Assert.Equal(new(2025, 1, 1), t.Recurrence.Start);
+            Assert.Equal(new(2025, 12, 31), t.Recurrence.End);
         }
 
         // [today-reminder] time-only due: ensure in the future relative to now
@@ -165,14 +164,10 @@ public class IntegrationTests
 
         // All dependencies refer to existing IDs
         var idSet = new HashSet<string>(ids, StringComparer.OrdinalIgnoreCase);
-        foreach (var t in tasks)
+        foreach (var dep in tasks.SelectMany(t => t.Dependencies))
         {
-            foreach (var dep in t.Dependencies)
-                Assert.Contains(dep, idSet);
+            Assert.Contains(dep, idSet);
         }
-
-        // No task has more than one recurrence (by design)
-        Assert.All(tasks, t => Assert.False(t.Recurrence.IsEmpty == false && t.Recurrence == null));
 
         // At least one task per key category
         Assert.Contains(tasks, t => t.Tags.Contains("work"));
@@ -182,7 +177,7 @@ public class IntegrationTests
 
         // Ensure quoted sigils were consumed as single tokens
         var meet = Get("meet1");
-        Assert.Equal(1, meet.Assignees.Count);
+        Assert.Single(meet.Assignees);
         var fac = Get("facilities");
         Assert.Equal(1, fac.Tags.Count(tag => tag == "support team"));
         Assert.Equal(1, fac.Contexts.Count(ctx => ctx == "HQ North"));

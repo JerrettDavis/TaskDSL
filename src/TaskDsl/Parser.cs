@@ -1,6 +1,4 @@
-﻿// File: TaskDsl.cs
-
-using System.Globalization;
+﻿using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -9,22 +7,17 @@ namespace TaskDsl;
 
 public static partial class Parser
 {
-// Put near the top of Parser
     private static readonly HashSet<char> SigilsNeedingQuoteJoin = ['^', '#', '-', '@'];
     private const string IdPattern = "^[A-Za-z0-9_-]+$";
 
     private static string StripOuterQuotes(string v)
-    {
-        if (v.Length >= 2 && ((v[0] == '"' && v[^1] == '"') || (v[0] == '\'' && v[^1] == '\'')))
-            return Regex.Unescape(v[1..^1]);
-        return v;
-    }
+        => v.Length >= 2 &&
+           ((v[0] == '"' && v[^1] == '"') ||
+            (v[0] == '\'' && v[^1] == '\''))
+            ? Regex.Unescape(v[1..^1])
+            : v;
 
-    private static string ValueAfterSigil(string t)
-    {
-        var v = t[1..];
-        return StripOuterQuotes(v);
-    }
+    private static string ValueAfterSigil(string t) => StripOuterQuotes(t[1..]);
 
     private static bool IsValidId(string id) => Regex.IsMatch(id, IdPattern);
 
@@ -107,7 +100,7 @@ public static partial class Parser
                     break;
 
                 case '+':
-                    if (t.Length >= 4 && t[1] == '[' && t[^1] == ']')
+                    if (t is [_, '[', _, _, ..] && t[^1] == ']')
                         task.Dependencies.Add(ExtractIdFromBracket(t));
                     else
                         throw new FormatException($"Bad dependency token '{t}'. Use +[id].");
@@ -189,19 +182,23 @@ public static partial class Parser
 
     private static string GenerateIdFromText(string title)
     {
-        if (string.IsNullOrWhiteSpace(title)) return "note-" + Guid.NewGuid().ToString("N")[..6];
+        if (string.IsNullOrWhiteSpace(title))
+            return "note-" + Guid.NewGuid().ToString("N")[..6];
 
         // slug
         var slug = Regex.Replace(title.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
         if (slug.Length > 32) slug = slug[..32].Trim('-');
 
-        // tiny hash for stability
+        // tiny hash for stability (not for security)
         using var sha = SHA1.Create();
         var bytes = Encoding.UTF8.GetBytes(title);
-        var hash = Convert.ToHexString(sha.ComputeHash(bytes)).ToLowerInvariant()[..6];
+        var hash6 = HexLower6(sha.ComputeHash(bytes)); // << shim call
 
-        return $"{slug}-{hash}";
+        return $"{slug}-{hash6}";
     }
+
+    private static partial string HexLower6(byte[] bytes);
+
 
     private static TaskStatus ParseStatus(string s) => s.ToUpperInvariant() switch
     {
@@ -240,28 +237,26 @@ public static partial class Parser
     // ---- Due parsing: >2025-08-20 or >fri+5p or >14:30 (today) ----
     private static DateTimeOffset ParseDue(string token, TimeZoneInfo tz, DateTimeOffset now)
     {
-        // absolute date or datetime
         if (DateTimeOffset.TryParse(token, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var dt))
             return dt;
 
-        // weekday + optional time  e.g., fri+5p
         var parts = token.Split('+', 2, StringSplitOptions.RemoveEmptyEntries);
         var localNow = TimeZoneInfo.ConvertTime(now, tz);
+
         if (parts.Length >= 1 && TryParseWeekday(parts[0], out var targetDow))
         {
-            var date = NextOrSame(DateOnly.FromDateTime(localNow.Date), targetDow, inclusive: localNow.TimeOfDay <= TimeSpan.Zero);
-            var time = parts.Length == 2 ? ParseTime(parts[1]) : new TimeOnly(17, 0); // default 5pm
-            var local = date.ToDateTime(time);
+            var date = NextOrSameDate(localNow, targetDow, inclusive: localNow.TimeOfDay <= TimeSpan.Zero);
+            var t = parts.Length == 2 ? ParseTimeToken(parts[1]) : DefaultFivePm();
+            var local = CombineDateAndTime(date, t);
             return TimeZoneInfo.ConvertTimeToUtc(local, tz);
         }
 
-        // time only -> today at that time
-        var tOnly = ParseTime(token);
-        {
-            var local = localNow.Date.Add(tOnly.ToTimeSpan());
-            if (local <= localNow) local = local.AddDays(1); // next occurrence
-            return TimeZoneInfo.ConvertTimeToUtc(local, tz);
-        }
+        // time-only => today at that time (or next day if past)
+        var timeOnly = ParseTimeToken(token);
+        var today = TruncateToDate(localNow);
+        var local2 = CombineDateAndTime(today, timeOnly);
+        if (local2 <= localNow) local2 = local2.AddDays(1);
+        return TimeZoneInfo.ConvertTimeToUtc(local2, tz);
     }
 
     private static bool TryParseWeekday(string s, out DayOfWeek dow)
@@ -279,44 +274,6 @@ public static partial class Parser
         };
         return (int)dow >= 0;
     }
-
-    private static DateOnly NextOrSame(DateOnly start, DayOfWeek target, bool inclusive)
-    {
-        var delta = ((int)target - (int)start.DayOfWeek + 7) % 7;
-        if (delta == 0 && !inclusive) delta = 7;
-        return start.AddDays(delta);
-    }
-
-    private static TimeOnly ParseTime(string s)
-    {
-        // normalize
-        s = s.Trim().ToLowerInvariant();
-
-        // Minute-only token (e.g., "15" => 00:15), used for "hour/..." recurrences.
-        if (Regex.IsMatch(s, @"^\d{1,2}$"))
-        {
-            var m = int.Parse(s);
-            if (m is >= 0 and <= 59) return new TimeOnly(0, m);
-            throw new FormatException("Minute token must be 0..59.");
-        }
-
-        // 8a, 2p, 2:05p
-        if (s.EndsWith("a") || s.EndsWith("p"))
-        {
-            var isPm = s.EndsWith("p");
-            s = s[..^1];
-            var hm = s.Split(':');
-            var h = int.Parse(hm[0]);
-            var m = hm.Length > 1 ? int.Parse(hm[1]) : 0;
-            if (h == 12) h = 0;
-            if (isPm) h += 12;
-            return new TimeOnly(h, m);
-        }
-
-        // 14:30 or 9 or 09:00
-        return TimeOnly.Parse(s, CultureInfo.InvariantCulture);
-    }
-
 
     private static TimeSpan ParseDuration(string s)
     {
@@ -361,7 +318,7 @@ public static partial class Parser
     // ---- Recurrence parsing: *<freq>[/<interval>][+<time>][@<start>][~<end>|~count:N] ----
     public static Recurrence ParseRecurrence(string r)
     {
-        // split on +, @, ~ while keeping main freq/interval prefix
+        // split on +, @, ~ while keeping the main freq/interval prefix
         // Example: "mon/2+2p+10:30@2025-01-01~2025-12-31"
         var freqAndInterval = r;
         string? start = null, end = null;
@@ -394,7 +351,8 @@ public static partial class Parser
         // Times: +t segments
         var timeParts = freqAndInterval.Split('+', StringSplitOptions.RemoveEmptyEntries);
         var basePart = timeParts[0];
-        var times = timeParts.Skip(1).Select(ParseTime).ToList();
+        var times = timeParts.Skip(1).Select(ParseTimeToken).ToList(); // platform-neutral
+
 
         // Interval
         var baseBits = basePart.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
@@ -406,29 +364,31 @@ public static partial class Parser
 
         ValidateFreq(freq);
 
-        DateOnly? startDate = null;
-        if (!string.IsNullOrEmpty(start))
-            startDate = DateOnly.Parse(start, CultureInfo.InvariantCulture);
+        var startDate = ParseDateOnlyOrNull(start);
+        var endDate = ParseDateOnlyOrNull(end);
 
-        DateOnly? endDate = null;
-        if (!string.IsNullOrEmpty(end))
-            endDate = DateOnly.Parse(end, CultureInfo.InvariantCulture);
-
-        return new Recurrence(freq, interval, times, startDate, endDate, count);
+        return CreateRecurrence(freq, interval, times, startDate, endDate, count); // platform-neutral ctor
     }
 
 
     private static List<string> TokenizeRespectingQuotedSigils(string left)
     {
-        // Keep quotes in tokens for now
-        var raw = TokenRegex().Matches(left).Select(m => m.Value).ToList();
+        var regex = new Regex("""
+                                      (?<dq>"(?:[^"\\]|\\.)*")         # double-quoted
+                                      | (?<sq>'(?:[^'\\]|\\.)*')          # single-quoted
+                                      | (?<plain>\S+)                     # plain
+                              """,
+            RegexOptions.IgnoreCase |
+            RegexOptions.Compiled |
+            RegexOptions.IgnorePatternWhitespace);
+        var raw = regex.Matches(left).Select(m => m.Value).ToList();
         var outTokens = new List<string>(raw.Count);
 
         for (var i = 0; i < raw.Count; i++)
         {
             var tok = raw[i];
 
-            // If token starts with a known sigil and an opening quote, join until closing quote
+            // If the token starts with a known sigil and an opening quote, join until closing quote
             var startsQuotedWithSigil =
                 tok.Length >= 2 && SigilsNeedingQuoteJoin.Contains(tok[0]) && tok[1] == '"';
 
@@ -482,7 +442,7 @@ public static partial class Parser
             "week" => "WEEKLY",
             "month" => "MONTHLY",
             "year" => "YEARLY",
-            _ => null // weekday / nth-weekday handled via BYDAY / BYSETPOS below
+            _ => null // weekday / nth-weekday handled via BYDAY / POSTPOSE below
         };
 
         if (freq != null) map["FREQ"] = freq;
@@ -499,9 +459,9 @@ public static partial class Parser
         {
             map["FREQ"] = "MONTHLY";
             var m = Regex.Match(r.Freq, "^(?<n>[1-5]|last)(?<d>mon|tue|wed|thu|fri|sat|sun)$", RegexOptions.IgnoreCase);
-            var setpos = m.Groups["n"].Value.Equals("last", StringComparison.OrdinalIgnoreCase) ? "-1" : m.Groups["n"].Value;
+            var setPos = m.Groups["n"].Value.Equals("last", StringComparison.OrdinalIgnoreCase) ? "-1" : m.Groups["n"].Value;
             map["BYDAY"] = DayToIcal(m.Groups["d"].Value);
-            map["BYSETPOS"] = setpos;
+            map["BYSETPOS"] = setPos;
         }
 
         if (r.Times.Count > 0)
@@ -551,7 +511,7 @@ public static partial class Parser
                 break;
 
             case "hour":
-                // For hourly, minutes list is meaningful; hours are */interval
+                // For hourly, the minute list is meaningful; hours are */interval
                 minute = string.Join(",", minutes);
                 hour = $"*/{r.Interval}";
                 dayOfMonth = "*";
@@ -606,7 +566,6 @@ public static partial class Parser
     }
 
 
-// In Parser
     public static string RecurrenceToString(Recurrence r, bool friendlyTimes = false)
     {
         if (r is null) throw new ArgumentNullException(nameof(r));
@@ -622,51 +581,47 @@ public static partial class Parser
         // +times (sorted, distinct)
         if (r.Times is { Count: > 0 })
         {
-            parts.AddRange(r.Times.Distinct()
-                .OrderBy(t => t.Hour)
-                .ThenBy(t => t.Minute)
-                .Select(t => "+" + FormatTimeToken(t, friendlyTimes, r.Freq)));
+            parts.AddRange(r.Times
+                .Distinct()
+                .OrderBy(GetHour)
+                .ThenBy(GetMinute)
+                .Select(t => "+" + FormatTimeTokenShim(t, friendlyTimes, r.Freq)));
         }
 
-        // @start
-        if (r.Start is { } s)
-            parts.Add("@" + s.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-
-        // ~end or ~count:N
-        if (r.End is { } e)
-            parts.Add("~" + e.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
-        else if (r.Count is { } c)
-            parts.Add("~count:" + c.ToString(CultureInfo.InvariantCulture));
+        if (r.Start is { } s) parts.Add("@" + FormatDateOnly(s));
+        if (r.End is { } e) parts.Add("~" + FormatDateOnly(e));
+        else if (r.Count is { } c) parts.Add("~count:" + c.ToString(CultureInfo.InvariantCulture));
 
         return string.Concat(parts);
     }
 
-// Time token formatting used in recurrence printing
-    private static string FormatTimeToken(TimeOnly t, bool friendlyTimes, string freq)
-    {
-        // If this is an hourly schedule and the hour is 0, we can print minute-only tokens (e.g., +15)
-        if (!friendlyTimes && string.Equals(freq, "hour", StringComparison.OrdinalIgnoreCase) && t.Hour == 0)
-            return t.Minute.ToString(CultureInfo.InvariantCulture);
 
-        if (!friendlyTimes)
-            return t.ToString("HH\\:mm", CultureInfo.InvariantCulture); // canonical 24h
+#if NET6_0_OR_GREATER
+    // Native modern types
+    private static partial DateOnly NextOrSameDate(DateTimeOffset localNow, DayOfWeek target, bool inclusive);
+    private static partial TimeOnly ParseTimeToken(string s);
+    private static partial TimeOnly DefaultFivePm();
+    private static partial DateTime CombineDateAndTime(DateOnly d, TimeOnly t);
+    private static partial DateOnly TruncateToDate(DateTimeOffset dt);
+    private static partial DateOnly? ParseDateOnlyOrNull(string? s);
+    private static partial Recurrence CreateRecurrence(string freq, int interval, List<TimeOnly> times, DateOnly? start, DateOnly? end, int? count);
+    private static partial string FormatTimeTokenShim(TimeOnly t, bool friendly, string freq);
+    private static partial string FormatDateOnly(DateOnly d);
+    private static partial int GetHour(TimeOnly t);
+    private static partial int GetMinute(TimeOnly t);
 
-        // Friendly: 8a, 2p, 2:05p
-        var h = t.Hour;
-        var m = t.Minute;
-        var isPm = h >= 12;
-        var h12 = h % 12;
-        if (h12 == 0) h12 = 12;
-
-        return m == 0
-            ? $"{h12}{(isPm ? "p" : "a")}"
-            : $"{h12}:{m:00}{(isPm ? "p" : "a")}";
-    }
-
-    [GeneratedRegex("""
-                            (?<dq>"(?:[^"\\]|\\.)*")         # double-quoted
-                            | (?<sq>'(?:[^'\\]|\\.)*')          # single-quoted
-                            | (?<plain>\S+)                     # plain
-                    """, RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.IgnorePatternWhitespace, "en-US")]
-    private static partial Regex TokenRegex();
+#else
+    // Legacy types (“date-only” as DateTime.Date, “time-only” as DateTime at 0001-01-01)
+    private static partial DateTime  NextOrSameDate(DateTimeOffset localNow, DayOfWeek target, bool inclusive);
+    private static partial DateTime  ParseTimeToken(string s);
+    private static partial DateTime  DefaultFivePm();
+    private static partial DateTime  CombineDateAndTime(DateTime d, DateTime t);
+    private static partial DateTime  TruncateToDate(DateTimeOffset dt);
+    private static partial DateTime? ParseDateOnlyOrNull(string? s);
+    private static partial Recurrence CreateRecurrence(string freq, int interval, List<DateTime> times, DateTime? start, DateTime? end, int? count);
+    private static partial string    FormatTimeTokenShim(DateTime t, bool friendly, string freq);
+    private static partial string    FormatDateOnly(DateTime d);
+    private static partial int       GetHour(DateTime t);
+    private static partial int       GetMinute(DateTime t);
+#endif
 }

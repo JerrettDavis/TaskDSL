@@ -91,14 +91,17 @@ public sealed record TodoTask
     public string ToBulletString()
     {
         // Only if it's a simple ad-hoc shape: no recurrence/due/meta/etc.
-        var simple = Recurrence.IsEmpty && !Due.HasValue && !Estimate.HasValue &&
-                     !Priority && !BlockedExplicit && !PriorityLevel.HasValue &&
-                     Contexts.Count == 0 && Meta.Count == 0;
+        var simple = Recurrence.IsEmpty && 
+                     !Due.HasValue && 
+                     !Estimate.HasValue &&
+                     !Priority && 
+                     !BlockedExplicit && 
+                     !PriorityLevel.HasValue &&
+                     Contexts.Count == 0 && 
+                     Meta.Count == 0;
 
         if (!simple) return ToString(); // fall back to full DSL
-
-        var parts = new List<string>();
-        parts.Add(Status == TaskStatus.Done ? "~~" : "-");
+        var parts = new List<string> { Status == TaskStatus.Done ? "~~" : "-" };
 
         // Compose inline markers
         var text = Title;

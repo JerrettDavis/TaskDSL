@@ -15,7 +15,7 @@ public class TaskDslTests
     [Fact]
     public void Parses_Simple_Task_With_Tags_Assignee_Title()
     {
-        var line = "O [work1] ^jd -work -bgis -- Clean up go-live checklist";
+        const string line = "O [work1] ^jd -work -bgis -- Clean up go-live checklist";
         var now = new DateTimeOffset(2025, 08, 12, 12, 00, 00, TimeSpan.Zero);
 
         var t = Parser.ParseLine(line, Tz, now);
@@ -31,7 +31,7 @@ public class TaskDslTests
     [Fact]
     public void Parses_Dependency_And_Recurrence()
     {
-        var line = "O [work2] ^jd +[work1] -work -bgis *mon+2p -- Send go-live checklist";
+        const string line = "O [work2] ^jd +[work1] -work -bgis *mon+2p -- Send go-live checklist";
         var now = new DateTimeOffset(2025, 08, 12, 12, 00, 00, TimeSpan.Zero);
 
         var t = Parser.ParseLine(line, Tz, now);
