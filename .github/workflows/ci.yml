@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore TaskDsl.sln
+
+      - name: Fetch all history and tags
+        run: git fetch --prune --unshallow --tags
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v1
+        with:
+          versionSpec: '5.x'
+
+      - name: Run GitVersion
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v1
+
+      - name: Set version variable
+        run: echo "PACKAGE_VERSION=${{ steps.gitversion.outputs.nuGetVersionV2 }}" >> $GITHUB_ENV
+
+      - name: Build
+        run: dotnet build TaskDsl.sln --configuration Release --no-restore /p:Version=${{ env.PACKAGE_VERSION }} /p:AssemblyVersion=${{ env.PACKAGE_VERSION }}.0 /p:FileVersion=${{ env.PACKAGE_VERSION }}.0 /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+
+      - name: Test
+        run: dotnet test TaskDsl.sln --configuration Release --no-build --verbosity normal
+
+      - name: Pack
+        run: dotnet pack src/TaskDsl/TaskDsl.csproj --configuration Release --no-build --output ./artifacts /p:Version=${{ env.PACKAGE_VERSION }} /p:AssemblyVersion=${{ env.PACKAGE_VERSION }}.0 /p:FileVersion=${{ env.PACKAGE_VERSION }}.0 /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+
+      - name: Upload NuGet packages as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages
+          path: ./artifacts/*.nupkg
+
+      - name: Create and push git tag for release
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git tag v${{ env.PACKAGE_VERSION }}
+          git push origin v${{ env.PACKAGE_VERSION }}
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.PACKAGE_VERSION }}
+          name: Release v${{ env.PACKAGE_VERSION }}
+          files: ./artifacts/*.nupkg
+
+      - name: Push to NuGet.org (disabled by default)
+        if: ${{ env.NUGET_API_KEY != '' }}
+        run: dotnet nuget push ./artifacts/*.nupkg --api-key ${{ env.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
