@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+    
+permissions:
+  contents: write
+  packages: write
 
 jobs:
   build-test-pack:
