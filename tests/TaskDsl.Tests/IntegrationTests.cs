@@ -1,3 +1,5 @@
+using TaskDsl.Extensions;
+
 namespace TaskDsl.Tests;
 
 public class IntegrationTests

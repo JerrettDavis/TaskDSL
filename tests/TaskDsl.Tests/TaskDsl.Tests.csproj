@@ -20,4 +20,8 @@
       <ProjectReference Include="..\..\src\TaskDsl\TaskDsl.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="TinyBDD.Xunit" />
+    </ItemGroup>
+
 </Project>

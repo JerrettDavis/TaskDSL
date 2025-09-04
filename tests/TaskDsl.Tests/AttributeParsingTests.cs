@@ -1,47 +1,66 @@
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using TinyBDD.Xunit;
+using Xunit;
+using Xunit.Abstractions;
+
 namespace TaskDsl.Tests;
 
-public class AttributeParsingTests
+
+using static ShouldExtensions;
+
+public class AttributeParsingTests(ITestOutputHelper output) : TinyBddXunitBase(output)
 {
+
     [Fact]
-    public void Parses_Assignees_Tags_Deps()
+    public Task Parses_Assignees_Tags_Deps()
     {
         const string line = "O [t] ^jd ^sam -work -bgis +[a] +[b] -- Title";
-        var t = Parser.ParseLine(line, TestUtil.ChicagoTz, TestUtil.FixedNowUtc);
 
-        Assert.True(t.Assignees.SetEquals(["jd", "sam"]));
-        Assert.True(t.Tags.SetEquals(["work", "bgis"]));
-        Assert.Equal(["a", "b"], t.Dependencies.ToArray());
-        Assert.Equal("Title", t.Title);
+        return Given(() => line)
+            .When(l => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc))
+            .Then(p => ShouldBe(p.Assignees.SetEquals(["jd", "sam"])))
+            .And(p => ShouldBe(p.Tags.SetEquals(["work", "bgis"])))
+            .And(p => ShouldEqual(p.Dependencies.ToArray(), ["a", "b"]))
+            .And(p => ShouldEqual("Title", p.Title))
+            .AssertPassed();
     }
 
     [Fact]
-    public void Parses_Estimate_Priority_Context_Meta()
+    public Task Parses_Estimate_Priority_Context_Meta()
     {
         const string line = "O [t] =45m p:3 @home @office meta:source=ops meta:ticket=BG-12 -- Do it";
-        var t = Parser.ParseLine(line, TestUtil.ChicagoTz, TestUtil.FixedNowUtc);
 
-        Assert.Equal(TimeSpan.FromMinutes(45), t.Estimate);
-        Assert.True(t.Contexts.SetEquals(["home", "office"]));
-        Assert.Equal("ops", t.Meta["source"]);
-        Assert.Equal("BG-12", t.Meta["ticket"]);
+        return Given(() => line)
+            .When(l => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc))
+            .Then(t =>
+            {
+                Assert.Equal(TimeSpan.FromMinutes(45), t.Estimate);
+                Assert.True(t.Contexts.SetEquals(["home", "office"]));
+                Assert.Equal("ops", t.Meta["source"]);
+                Assert.Equal("BG-12", t.Meta["ticket"]);
+            })
+            .AssertPassed();
     }
 
     [Theory]
     [InlineData("meta:x")]
     [InlineData("meta:=y")]
     [InlineData("meta:x=")]
-    public void Bad_Meta_Throws(string meta)
-    {
-        Assert.ThrowsAny<Exception>(() =>
-            Parser.ParseLine($"O [t] {meta} -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
-    }
+    public Task Bad_Meta_Throws(string meta)
+        => Given(() => meta)
+            // Return an Action so the exception is thrown when the action is executed in Then
+            .When(m => new Action(() => Parser.ParseLine($"O [t] {m} -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc)))
+            .Then(a => Assert.ThrowsAny<Exception>(a))
+            .AssertPassed();
 
     [Fact]
-    public void Unknown_Token_Throws()
-    {
-        Assert.ThrowsAny<Exception>(() =>
-            Parser.ParseLine("O [t] %weird -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
-    }
+    public Task Unknown_Token_Throws()
+        => Given(() => "O [t] %weird -- x")
+            .When(l => new Action(() => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc)))
+            .Then(a => Assert.ThrowsAny<Exception>(a))
+            .AssertPassed();
 
     [Theory]
     [InlineData("=10x")] // invalid unit
@@ -49,9 +68,9 @@ public class AttributeParsingTests
     [InlineData("=1w")]  // unsupported unit
     [InlineData("=m")]   // missing number
     [InlineData("=10")]  // missing unit
-    public void Bad_Duration_Throws(string dur)
-    {
-        Assert.Throws<FormatException>(() =>
-            Parser.ParseLine($"O [t] {dur} -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
-    }
+    public Task Bad_Duration_Throws(string dur)
+        => Given(() => dur)
+            .When(d => new Action(() => Parser.ParseLine($"O [t] {d} -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc)))
+            .Then(a => Assert.Throws<FormatException>(a))
+            .AssertPassed();
 }
