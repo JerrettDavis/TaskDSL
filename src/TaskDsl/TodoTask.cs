@@ -13,7 +13,7 @@ public sealed record TodoTask
 
     public HashSet<string> Assignees { get; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> Tags { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public List<string> Dependencies { get; } = new();
+    public List<string> Dependencies { get; } = [];
     public Recurrence Recurrence { get; set; } = Recurrence.Empty;
     public DateTimeOffset? Due { get; set; }
     public TimeSpan? Estimate { get; set; }

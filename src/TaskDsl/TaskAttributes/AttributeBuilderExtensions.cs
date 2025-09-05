@@ -2,7 +2,7 @@ namespace TaskDsl.TaskAttributes;
 
 public class AttributeBuilder
 {
-    private List<string> Parts { get; } = new();
+    private List<string> Parts { get; } = [];
     
     public int AttributeCount => Parts.Count;
 

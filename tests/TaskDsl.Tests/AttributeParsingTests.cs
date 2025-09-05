@@ -1,38 +1,25 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using TinyBDD.Xunit;
-using Xunit;
 using Xunit.Abstractions;
 
 namespace TaskDsl.Tests;
-
 
 using static ShouldExtensions;
 
 public class AttributeParsingTests(ITestOutputHelper output) : TinyBddXunitBase(output)
 {
-
     [Fact]
     public Task Parses_Assignees_Tags_Deps()
-    {
-        const string line = "O [t] ^jd ^sam -work -bgis +[a] +[b] -- Title";
-
-        return Given(() => line)
+        => Given(() => "O [t] ^jd ^sam -work -bgis +[a] +[b] -- Title")
             .When(l => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc))
             .Then(p => ShouldBe(p.Assignees.SetEquals(["jd", "sam"])))
             .And(p => ShouldBe(p.Tags.SetEquals(["work", "bgis"])))
             .And(p => ShouldEqual(p.Dependencies.ToArray(), ["a", "b"]))
-            .And(p => ShouldEqual("Title", p.Title))
+            .And(p => ShouldEqual(["Title"], [p.Title]))
             .AssertPassed();
-    }
 
     [Fact]
     public Task Parses_Estimate_Priority_Context_Meta()
-    {
-        const string line = "O [t] =45m p:3 @home @office meta:source=ops meta:ticket=BG-12 -- Do it";
-
-        return Given(() => line)
+        => Given(() => "O [t] =45m p:3 @home @office meta:source=ops meta:ticket=BG-12 -- Do it")
             .When(l => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc))
             .Then(t =>
             {
@@ -42,7 +29,6 @@ public class AttributeParsingTests(ITestOutputHelper output) : TinyBddXunitBase(
                 Assert.Equal("BG-12", t.Meta["ticket"]);
             })
             .AssertPassed();
-    }
 
     [Theory]
     [InlineData("meta:x")]

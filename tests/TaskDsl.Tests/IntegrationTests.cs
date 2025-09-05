@@ -1,20 +1,27 @@
 using TaskDsl.Extensions;
+using TinyBDD.Xunit;
+using Xunit.Abstractions;
 
 namespace TaskDsl.Tests;
 
-public class IntegrationTests
+public class IntegrationTests(ITestOutputHelper output) : TinyBddXunitBase(output)
 {
     [Fact]
-    public void Parses_Realistic_Todo_File_EndToEnd()
+    public Task Parses_Realistic_Todo_File_EndToEnd()
+        => Given("fixed now and chicago tz", () => (TestUtil.FixedNowUtc, TestUtil.ChicagoTz))
+            .When("build tasks from sample lines", ctx => BuildTasks(ctx.Item1, ctx.Item2))
+            .Then("validate parsed tasks", tasks => AssertIntegrationTasks(tasks, TestUtil.FixedNowUtc))
+            .AssertPassed();
+
+    // Helper that builds the list of tasks from sample lines
+    private static List<TodoTask> BuildTasks(DateTimeOffset now, TimeZoneInfo tz)
     {
-        var now = TestUtil.FixedNowUtc;
-        var tz = TestUtil.ChicagoTz;
         var lines = new[]
         {
             // 1) Simple root item
             "O [root] -inbox -- Capture random ideas",
 
-            // 3) Weekday due with time + quoted assignee + contexts
+            // 3) Weekday due with time + quoted assignee and contexts
             "O [meet1] ^\"sam j\" @office >fri+5p -meeting -- 1:1 with Sam",
 
             // 4) Daily twice at 8a and 8p
@@ -48,9 +55,12 @@ public class IntegrationTests
             "O [release] ^jd ^sam -work -release +[deploy] @office @remote p:2 =90m *tue+10:00 meta:owner=platform -- Release comms"
         };
 
-        // Parse all
-        var tasks = lines.Select(l => Parser.ParseLine(l, tz, now)).ToList();
+        return lines.Select(l => Parser.ParseLine(l, tz, now)).ToList();
+    }
 
+    // Helper that contains all assertions previously inlined in the Then block
+    private static ValueTask AssertIntegrationTasks(List<TodoTask> tasks, DateTimeOffset now)
+    {
         // --------- High-level sanity ----------
         Assert.Equal(12, tasks.Count);
 
@@ -118,7 +128,7 @@ public class IntegrationTests
         {
             var t = Get("standup");
             Assert.Equal("wed", t.Recurrence.Freq);
-            Assert.Equal([9, 13], t.Recurrence.Times.Select(x => x.Hour).ToArray());
+            Assert.Equal(new[] { 9, 13 }, t.Recurrence.Times.Select(x => x.Hour).ToArray());
         }
 
         // [quarterly-plan] month/3 with range
@@ -183,5 +193,7 @@ public class IntegrationTests
         var fac = Get("facilities");
         Assert.Equal(1, fac.Tags.Count(tag => tag == "support team"));
         Assert.Equal(1, fac.Contexts.Count(ctx => ctx == "HQ North"));
+        
+        return default;
     }
 }

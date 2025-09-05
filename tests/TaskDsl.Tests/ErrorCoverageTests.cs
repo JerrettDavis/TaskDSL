@@ -1,30 +1,33 @@
+using TinyBDD.Xunit;
+using Xunit.Abstractions;
+
 namespace TaskDsl.Tests;
 
-public class ErrorCoverageTests
+public class ErrorCoverageTests(ITestOutputHelper output) : TinyBddXunitBase(output)
 {
     [Theory]
     [InlineData("")]
     [InlineData("   ")]
-    public void Empty_Line_Throws(string line)
-    {
-        Assert.Throws<ArgumentException>(() =>
-            Parser.ParseLine(line, TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
-    }
+    public Task Empty_Line_Throws(string line)
+        => Given(() => line)
+            .When(l => new Action(() => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc)))
+            .Then(a => Assert.Throws<ArgumentException>(a))
+            .AssertPassed();
 
     [Theory]
     [InlineData("O")]
     [InlineData("O    ")]
     [InlineData("O -- title only")]
-    public void Missing_Id_Throws(string line)
-    {
-        Assert.Throws<FormatException>(() =>
-            Parser.ParseLine(line, TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
-    }
+    public Task Missing_Id_Throws(string line)
+        => Given(() => line)
+            .When(l => new Action(() => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc)))
+            .Then(a => Assert.Throws<FormatException>(a))
+            .AssertPassed();
 
     [Fact]
-    public void Dependency_Id_Must_Be_Simple()
-    {
-        Assert.ThrowsAny<Exception>(() =>
-            Parser.ParseLine("O [t] +[bad id] -- x", TestUtil.ChicagoTz, TestUtil.FixedNowUtc));
-    }
+    public Task Dependency_Id_Must_Be_Simple()
+        => Given(() => "O [t] +[bad id] -- x")
+            .When(l => new Action(() => Parser.ParseLine(l, TestUtil.ChicagoTz, TestUtil.FixedNowUtc)))
+            .Then(a => Assert.ThrowsAny<Exception>(a))
+            .AssertPassed();
 }
