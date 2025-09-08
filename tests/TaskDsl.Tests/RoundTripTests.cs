@@ -1,6 +1,9 @@
+using TinyBDD.Xunit;
+using Xunit.Abstractions;
+
 namespace TaskDsl.Tests;
 
-public class RoundTripTests
+public class RoundTripTests(ITestOutputHelper output) : TinyBddXunitBase(output)
 {
     private static readonly TimeZoneInfo Tz = TestUtil.ChicagoTz;
     private static readonly DateTimeOffset Now = TestUtil.FixedNowUtc;
@@ -30,19 +33,16 @@ public class RoundTripTests
     [InlineData("O [t11] @office meta:ticket=BG-42 meta:src=ops -- Work item")]
     // done item
     [InlineData("X [t12] -done -- Completed")]
-    public void Dsl_ToString_And_Back_Preserves_Semantics(string original)
-    {
-        // Parse original
-        var a = Parser.ParseLine(original, Tz, Now);
-
-        // Render canonical DSL
-        var canonical = a.ToString();
-
-        // Parse canonical back
-        var b = Parser.ParseLine(canonical, Tz, Now);
-
-        AssertTasksEqual(a, b);
-    }
+    public Task Dsl_ToString_And_Back_Preserves_Semantics(string original)
+        => Given(() => original)
+            .When(s => Parser.ParseLine(s, Tz, Now))
+            .Then(a =>
+            {
+                var canonical = a.ToString();
+                var b = Parser.ParseLine(canonical, Tz, Now);
+                AssertTasksEqual(a, b);
+            })
+            .AssertPassed();
 
     private static void AssertTasksEqual(TodoTask a, TodoTask b)
     {

@@ -5,17 +5,25 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-    
+
+env:
+  DOTNET_NOLOGO: true
+  INCLUDE_SYMBOLS: true
+
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   build-test-pack:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -25,10 +33,12 @@ jobs:
             9.0.x
 
       - name: Restore dependencies
-        run: dotnet restore TaskDsl.sln
+        run: |
+          dotnet restore TaskDsl.sln --use-lock-file
+          dotnet tool restore
 
-      - name: Fetch all history and tags
-        run: git fetch --prune --unshallow --tags
+      - name: Fetch all history and tags (safety)
+        run: git fetch --prune --tags
 
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v1
@@ -39,17 +49,96 @@ jobs:
         id: gitversion
         uses: gittools/actions/gitversion/execute@v1
 
-      - name: Set version variable
-        run: echo "PACKAGE_VERSION=${{ steps.gitversion.outputs.nuGetVersionV2 }}" >> $GITHUB_ENV
+      - name: Set version variables
+        run: |
+          echo "PACKAGE_VERSION=${{ steps.gitversion.outputs.nuGetVersionV2 }}" >> $GITHUB_ENV
+          echo "ASSEMBLY_VERSION=${{ steps.gitversion.outputs.assemblySemVer }}" >> $GITHUB_ENV
+          echo "FILE_VERSION=${{ steps.gitversion.outputs.assemblyFileSemVer }}" >> $GITHUB_ENV
+          echo "INFO_VERSION=${{ steps.gitversion.outputs.informationalVersion }}" >> $GITHUB_ENV
 
       - name: Build
-        run: dotnet build TaskDsl.sln --configuration Release --no-restore /p:Version=${{ env.PACKAGE_VERSION }} /p:AssemblyVersion=${{ env.PACKAGE_VERSION }}.0 /p:FileVersion=${{ env.PACKAGE_VERSION }}.0 /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+        run: >
+          dotnet build TaskDsl.sln
+          --configuration Release
+          --no-restore
+          /p:Version=${{ env.PACKAGE_VERSION }}
+          /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+          /p:AssemblyVersion=${{ env.ASSEMBLY_VERSION }}
+          /p:FileVersion=${{ env.FILE_VERSION }}
+          /p:InformationalVersion="${{ env.INFO_VERSION }}"
+          /p:ContinuousIntegrationBuild=true
 
-      - name: Test
-        run: dotnet test TaskDsl.sln --configuration Release --no-build --verbosity normal
+      - name: Test with coverage
+        run: |
+          dotnet test TaskDsl.sln \
+            --configuration Release \
+            --no-build \
+            --collect:"XPlat Code Coverage" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Include="[TaskDsl*]*" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude="[*Tests]*"
 
+      - name: Install ReportGenerator
+        run: dotnet tool update -g dotnet-reportgenerator-globaltool
+
+      - name: Combine coverage and create reports
+        shell: bash
+        run: |
+          set -euo pipefail
+          REPORTS=$(find . -type f -path "*/TestResults/*/coverage.cobertura.xml" | tr '\n' ';')
+          if [ -z "$REPORTS" ]; then
+            echo "No coverage reports found."; exit 1
+          fi
+          reportgenerator \
+            -reports:"$REPORTS" \
+            -targetdir:"coverage-report" \
+            -reporttypes:"HtmlInline;Cobertura;TextSummary;lcov;Badges" \
+            -assemblyfilters:"+TaskDsl*;-*Tests*" \
+            -filefilters:"-**/*.Tests/*;-**/*Tests*/**"
+          echo "COVERAGE_SUMMARY<<EOF" >> $GITHUB_ENV
+          cat coverage-report/Summary.txt >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Upload coverage HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage-report
+
+      - name: Add coverage summary to PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          message: |
+            ## Code Coverage
+            ```
+            ${{ env.COVERAGE_SUMMARY }}
+            ```
+
+      - name: Upload coverage to Codecov
+        if: github.event_name == 'pull_request'
+        uses: codecov/codecov-action@v4
+        with:
+          files: "**/TestResults/*/coverage.cobertura.xml"
+          flags: unittests
+          fail_ci_if_error: true
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      # --- Pack & publish (same as before) ---
       - name: Pack
-        run: dotnet pack src/TaskDsl/TaskDsl.csproj --configuration Release --no-build --output ./artifacts /p:Version=${{ env.PACKAGE_VERSION }} /p:AssemblyVersion=${{ env.PACKAGE_VERSION }}.0 /p:FileVersion=${{ env.PACKAGE_VERSION }}.0 /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+        run: >
+          dotnet pack src/TaskDsl/TaskDsl.csproj
+          --configuration Release
+          --no-build
+          --output ./artifacts
+          /p:Version=${{ env.PACKAGE_VERSION }}
+          /p:PackageVersion=${{ env.PACKAGE_VERSION }}
+          /p:AssemblyVersion=${{ env.ASSEMBLY_VERSION }}
+          /p:FileVersion=${{ env.FILE_VERSION }}
+          /p:InformationalVersion="${{ env.INFO_VERSION }}"
 
       - name: Upload NuGet packages as artifacts
         uses: actions/upload-artifact@v4
@@ -59,11 +148,17 @@ jobs:
 
       - name: Create and push git tag for release
         if: github.ref == 'refs/heads/main'
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
-          git tag v${{ env.PACKAGE_VERSION }}
-          git push origin v${{ env.PACKAGE_VERSION }}
+          if git rev-parse "v${PACKAGE_VERSION}" >/dev/null 2>&1; then
+            echo "Tag v${PACKAGE_VERSION} already exists. Skipping tag push."
+          else
+            git tag "v${PACKAGE_VERSION}"
+            git push origin "v${PACKAGE_VERSION}"
+          fi
 
       - name: Create GitHub Release
         if: github.ref == 'refs/heads/main'
@@ -72,6 +167,7 @@ jobs:
           tag_name: v${{ env.PACKAGE_VERSION }}
           name: Release v${{ env.PACKAGE_VERSION }}
           files: ./artifacts/*.nupkg
+          generate_release_notes: true
 
       - name: Push to NuGet.org (disabled by default)
         if: ${{ env.NUGET_API_KEY != '' }}

@@ -2,22 +2,18 @@ using TaskDsl.TaskAttributes;
 
 namespace TaskDsl;
 
-using static Parser;
-
 public sealed record TodoTask
 {
     public TaskStatus Status { get; init; }
     public string Id { get; init; } = "";
     public string Title { get; init; } = "";
 
-    // NEW flags
     public bool Priority { get; set; }        // set by '!' token
     public bool BlockedExplicit { get; set; } // set by '?' token
 
-    // existing collections...
     public HashSet<string> Assignees { get; } = new(StringComparer.OrdinalIgnoreCase);
     public HashSet<string> Tags { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public List<string> Dependencies { get; } = new();
+    public List<string> Dependencies { get; } = [];
     public Recurrence Recurrence { get; set; } = Recurrence.Empty;
     public DateTimeOffset? Due { get; set; }
     public TimeSpan? Estimate { get; set; }
@@ -50,13 +46,13 @@ public sealed record TodoTask
     public string ToBulletString()
     {
         // Only if it's a simple ad-hoc shape: no recurrence/due/meta/etc.
-        var simple = Recurrence.IsEmpty && 
-                     !Due.HasValue && 
+        var simple = Recurrence.IsEmpty &&
+                     !Due.HasValue &&
                      !Estimate.HasValue &&
-                     !Priority && 
-                     !BlockedExplicit && 
+                     !Priority &&
+                     !BlockedExplicit &&
                      !PriorityLevel.HasValue &&
-                     Contexts.Count == 0 && 
+                     Contexts.Count == 0 &&
                      Meta.Count == 0;
 
         if (!simple) return ToString(); // fall back to full DSL
@@ -86,7 +82,8 @@ public sealed record TodoTask
             .AddIf(Dependencies.Count > 0, () => "After: " + string.Join(", ", Dependencies))
             .AddIf(Estimate.HasValue, () => $"Est: {FormatEstimate(Estimate!.Value)}")
             .AddIf(PriorityLevel.HasValue, () => $"P{PriorityLevel!.Value}")
-            .AddIf(Meta.Count > 0, () => "Meta: " + string.Join(", ", Meta.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => $"{kv.Key}={kv.Value}")));
+            .AddIf(Meta.Count > 0,
+                () => "Meta: " + string.Join(", ", Meta.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => $"{kv.Key}={kv.Value}")));
 
         var details = pills.AttributeCount == 0 ? "" : "\n    " + pills.BuildCanonicalAttributes(" | ");
         return $"{statusIcon} {Title} ({Id}){details}";
