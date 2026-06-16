@@ -53,10 +53,23 @@ jobs:
       - name: Set version variables
         shell: bash
         run: |
-          echo "PACKAGE_VERSION=${GitVersion_NuGetVersionV2:-${{ steps.gitversion.outputs.nuGetVersionV2 }}}" >> $GITHUB_ENV
-          echo "ASSEMBLY_VERSION=${GitVersion_AssemblySemVer:-${{ steps.gitversion.outputs.assemblySemVer }}}" >> $GITHUB_ENV
-          echo "FILE_VERSION=${GitVersion_AssemblySemFileVer:-${{ steps.gitversion.outputs.assemblySemFileVer }}}" >> $GITHUB_ENV
-          echo "INFO_VERSION=${GitVersion_InformationalVersion:-${{ steps.gitversion.outputs.informationalVersion }}}" >> $GITHUB_ENV
+          PACKAGE_VERSION="${GitVersion_NuGetVersionV2:-${{ steps.gitversion.outputs.nuGetVersionV2 }}}"
+          PACKAGE_VERSION="${PACKAGE_VERSION:-${GitVersion_SemVer:-${{ steps.gitversion.outputs.semVer }}}}"
+          PACKAGE_VERSION="${PACKAGE_VERSION:-${GitVersion_MajorMinorPatch:-${{ steps.gitversion.outputs.majorMinorPatch }}}}"
+          ASSEMBLY_VERSION="${GitVersion_AssemblySemVer:-${{ steps.gitversion.outputs.assemblySemVer }}}"
+          FILE_VERSION="${GitVersion_AssemblySemFileVer:-${{ steps.gitversion.outputs.assemblySemFileVer }}}"
+          INFO_VERSION="${GitVersion_InformationalVersion:-${{ steps.gitversion.outputs.informationalVersion }}}"
+
+          if [[ -z "$PACKAGE_VERSION" || -z "$ASSEMBLY_VERSION" || -z "$FILE_VERSION" || -z "$INFO_VERSION" ]]; then
+            echo "GitVersion did not produce required version values." >&2
+            env | sort | grep -E '^GitVersion_' >&2 || true
+            exit 1
+          fi
+
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_ENV"
+          echo "ASSEMBLY_VERSION=$ASSEMBLY_VERSION" >> "$GITHUB_ENV"
+          echo "FILE_VERSION=$FILE_VERSION" >> "$GITHUB_ENV"
+          echo "INFO_VERSION=$INFO_VERSION" >> "$GITHUB_ENV"
 
       - name: Build
         run: >
