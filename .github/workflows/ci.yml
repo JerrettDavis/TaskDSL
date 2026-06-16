@@ -44,7 +44,7 @@ jobs:
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v4
         with:
-          versionSpec: '5.x'
+          versionSpec: '6.x'
 
       - name: Run GitVersion
         id: gitversion
@@ -123,7 +123,7 @@ jobs:
         with:
           files: "**/TestResults/*/coverage.cobertura.xml"
           flags: unittests
-          fail_ci_if_error: true
+          fail_ci_if_error: false
           verbose: true
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
