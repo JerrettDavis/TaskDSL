@@ -172,7 +172,16 @@ jobs:
             echo "Tag v${PACKAGE_VERSION} already exists. Skipping tag push."
           else
             git tag "v${PACKAGE_VERSION}"
-            git push origin "v${PACKAGE_VERSION}"
+            if ! git push origin "v${PACKAGE_VERSION}"; then
+              echo "Push failed — tag may have been pushed concurrently. Verifying..."
+              git fetch --tags
+              if git rev-parse "v${PACKAGE_VERSION}" >/dev/null 2>&1; then
+                echo "Tag v${PACKAGE_VERSION} confirmed on remote. Treating as success."
+              else
+                echo "Tag push failed and tag is not on remote. Aborting." >&2
+                exit 1
+              fi
+            fi
           fi
 
       - name: Create GitHub Release
