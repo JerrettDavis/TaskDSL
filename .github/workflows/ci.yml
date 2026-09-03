@@ -65,6 +65,10 @@ jobs:
           FILE_VERSION="${GitVersion_AssemblySemFileVer:-${{ steps.gitversion.outputs.assemblySemFileVer }}}"
           INFO_VERSION="${GitVersion_InformationalVersion:-${{ steps.gitversion.outputs.informationalVersion }}}"
 
+          if [[ "$PACKAGE_VERSION" =~ ^([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
+            PACKAGE_VERSION="${BASH_REMATCH[1]}-ci.${BASH_REMATCH[2]}"
+          fi
+
           if [[ -z "$PACKAGE_VERSION" || -z "$ASSEMBLY_VERSION" || -z "$FILE_VERSION" || -z "$INFO_VERSION" ]]; then
             echo "GitVersion did not produce required version values." >&2
             env | sort | grep -E '^GitVersion_' >&2 || true
